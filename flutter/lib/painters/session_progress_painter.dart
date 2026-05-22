@@ -50,9 +50,12 @@ class SessionProgressPainter extends CustomPainter {
       );
     }
 
-    // Tick dots around the outside
-    for (int i = 0; i < total; i++) {
-      final angle = (i / total) * 2 * math.pi - math.pi / 2;
+    // Tick dots around the outside. Large custom totals are summarized to
+    // keep the painter light while preserving the ring's visual rhythm.
+    final dotTotal = math.min(total, 120);
+    final activeDots = total == 0 ? 0 : (current / total * dotTotal).round();
+    for (int i = 0; i < dotTotal; i++) {
+      final angle = (i / dotTotal) * 2 * math.pi - math.pi / 2;
       final dotCenter = Offset(
         center.dx + math.cos(angle) * (radius + 14),
         center.dy + math.sin(angle) * (radius + 14),
@@ -61,7 +64,7 @@ class SessionProgressPainter extends CustomPainter {
         dotCenter,
         1.2,
         Paint()
-          ..color = i < current ? dotActiveColor : dotInactiveColor
+          ..color = i < activeDots ? dotActiveColor : dotInactiveColor
           ..style = PaintingStyle.fill,
       );
     }

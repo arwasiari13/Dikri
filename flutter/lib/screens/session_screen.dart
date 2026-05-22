@@ -28,8 +28,9 @@ class SessionScreen extends StatefulWidget {
 class _SessionScreenState extends State<SessionScreen>
     with TickerProviderStateMixin {
   int _count = 0;
+  int _completedCycles = 0;
   bool _running = true;
-  bool _complete = false;
+  final bool _complete = false;
   bool _saved = false;
   Timer? _sessionTimer;
 
@@ -79,18 +80,24 @@ class _SessionScreenState extends State<SessionScreen>
 
   void _increment() {
     if (!_running || _complete) return;
-    setState(() => _count++);
+    final nextCount = _count + 1;
+    final reachedTarget = nextCount >= widget.total;
+    setState(() {
+      if (reachedTarget) {
+        _completedCycles++;
+        _count = 0;
+      } else {
+        _count = nextCount;
+      }
+    });
     _numberCtrl.forward(from: 0);
 
-    if (_count >= widget.total) {
-      _sessionTimer?.cancel();
-      _saveSession(widget.total);
+    if (reachedTarget) {
       HapticFeedback.heavyImpact();
-      Future.delayed(const Duration(milliseconds: 400), () {
-        if (mounted) setState(() => _complete = true);
-      });
     }
   }
+
+  int get _totalCompleted => (_completedCycles * widget.total) + _count;
 
   Future<void> _saveSession(int completed) async {
     if (_saved) return;
@@ -99,7 +106,7 @@ class _SessionScreenState extends State<SessionScreen>
       SessionRecord(
         date: DateTime.now(),
         target: widget.total,
-        completed: completed.clamp(0, widget.total),
+        completed: completed,
         dhikrText: widget.dhikrText,
       ),
     );
@@ -143,7 +150,7 @@ class _SessionScreenState extends State<SessionScreen>
               dark: true,
               onTap: () async {
                 Navigator.pop(ctx);
-                await _saveSession(_count);
+                await _saveSession(_totalCompleted);
                 if (!mounted) return;
                 Navigator.pushAndRemoveUntil(
                   context,
@@ -182,6 +189,7 @@ class _SessionScreenState extends State<SessionScreen>
 
   Widget _buildSession() {
     final progress = _count / widget.total;
+    final totalCompleted = _totalCompleted;
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
@@ -282,7 +290,9 @@ class _SessionScreenState extends State<SessionScreen>
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'تنفس بهدوء، الذكر يجري معك.',
+                    totalCompleted == 0
+                        ? 'تنفس بهدوء، الذكر يجري معك.'
+                        : '${toArabic(totalCompleted)} ذكر حتى الآن',
                     style: AppFonts.arabic(size: 13, color: AppColors.ink3),
                   ),
                 ],

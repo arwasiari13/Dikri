@@ -21,7 +21,7 @@ class ReadyScreen extends StatelessWidget {
     final totalSeconds = (recordedDuration * total).round();
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
-    final label = total == 33 ? '٣٣' : '١٠٠';
+    final label = toArabic(total);
 
     return Scaffold(
       backgroundColor: AppColors.bg,

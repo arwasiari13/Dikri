@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../repositories/saved_dhikr_store.dart';
@@ -249,6 +250,7 @@ class _RecordScreenState extends State<RecordScreen>
       _recordedDuration = (adjustedMs / 1000.0).clamp(0.8, 60);
       _state = _RecordState.complete;
     });
+    HapticFeedback.mediumImpact();
   }
 
   void _retry() {

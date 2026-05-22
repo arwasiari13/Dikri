@@ -18,18 +18,17 @@ class Wordmark extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          'ذِكري',
-          style: AppFonts.kufi(
-            size: size,
-            weight: FontWeight.w500,
-            color: color,
-            spacing: -0.5,
-            height: 1,
+        ClipRRect(
+          borderRadius: BorderRadius.circular(size * 0.22),
+          child: Image.asset(
+            'assets/icon/dikri_logo.png',
+            width: size * 1.45,
+            height: size * 1.45,
+            fit: BoxFit.cover,
           ),
         ),
         if (showEn) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 12),
           Text(
             'DIKRI',
             style: AppFonts.kufi(
