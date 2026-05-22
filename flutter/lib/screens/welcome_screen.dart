@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../widgets/wordmark.dart';
 import '../widgets/primary_button.dart';
-import 'record_screen.dart';
+import 'dhikr_library_screen.dart';
 import 'history_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -45,7 +45,9 @@ class WelcomeScreen extends StatelessWidget {
                     label: 'ابدأ التسجيل',
                     onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const RecordScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const DhikrLibraryScreen(),
+                      ),
                     ),
                   ),
                 ),

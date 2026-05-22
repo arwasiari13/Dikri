@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>نحتاج الميكروفون لتسجيل الذكر وتحويله إلى نص.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>نحتاج التعرّف الصوتي لتحويل الذكر المسجّل إلى نص.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -1,5 +1,9 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+
+import '../repositories/saved_dhikr_store.dart';
 import '../theme.dart';
 import '../utils.dart';
 import '../widgets/primary_button.dart';
@@ -17,9 +21,16 @@ class RecordScreen extends StatefulWidget {
 
 class _RecordScreenState extends State<RecordScreen>
     with TickerProviderStateMixin {
+  final _speech = stt.SpeechToText();
+  final _dhikrStore = SavedDhikrStore();
+
   _RecordState _state = _RecordState.idle;
   int _elapsedMs = 0;
   double _recordedDuration = 3.2;
+  String _recognizedText = '';
+  String? _speechMessage;
+  bool _speechReady = false;
+  bool _saving = false;
   Timer? _recordTimer;
 
   late AnimationController _breatheCtrl;
@@ -29,9 +40,38 @@ class _RecordScreenState extends State<RecordScreen>
   late Animation<double> _blinkOpacity;
 
   static const List<double> _barHeights = [
-    22.0, 38, 14, 52, 30, 64, 42, 28, 56, 36,
-    70, 44, 24, 50, 32, 60, 26, 46, 38, 18,
-    42, 56, 30, 22, 48, 36, 62, 28, 40, 20, 32, 18,
+    22.0,
+    38,
+    14,
+    52,
+    30,
+    64,
+    42,
+    28,
+    56,
+    36,
+    70,
+    44,
+    24,
+    50,
+    32,
+    60,
+    26,
+    46,
+    38,
+    18,
+    42,
+    56,
+    30,
+    22,
+    48,
+    36,
+    62,
+    28,
+    40,
+    20,
+    32,
+    18,
   ];
 
   @override
@@ -64,29 +104,106 @@ class _RecordScreenState extends State<RecordScreen>
     _breatheCtrl.dispose();
     _blinkCtrl.dispose();
     _recordTimer?.cancel();
+    _speech.stop();
     super.dispose();
   }
 
-  void _startRecording() {
+  Future<void> _startRecording() async {
+    setState(() {
+      _speechMessage = null;
+      _recognizedText = '';
+      _elapsedMs = 0;
+    });
+
+    final ready = _speechReady ||
+        await _speech.initialize(
+          onError: (error) {
+            if (!mounted) return;
+            setState(() => _speechMessage = error.errorMsg);
+          },
+          onStatus: (status) {
+            if (!mounted) return;
+            if (status == 'done' && _state == _RecordState.recording) {
+              _stopRecording();
+            }
+          },
+        );
+
+    if (!ready) {
+      setState(() {
+        _speechMessage =
+            'لم يتم السماح باستخدام الميكروفون أو خدمة التعرّف الصوتي.';
+      });
+      return;
+    }
+
+    _speechReady = true;
     setState(() => _state = _RecordState.recording);
     _recordTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      setState(() => _elapsedMs += 100);
+      if (mounted) setState(() => _elapsedMs += 100);
     });
+
+    await _speech.listen(
+      onResult: (result) {
+        if (!mounted) return;
+        setState(() {
+          _recognizedText = result.recognizedWords.trim();
+        });
+      },
+      listenOptions: stt.SpeechListenOptions(
+        localeId: 'ar',
+        listenFor: const Duration(seconds: 45),
+        pauseFor: const Duration(seconds: 4),
+        partialResults: true,
+        cancelOnError: false,
+        listenMode: stt.ListenMode.dictation,
+      ),
+    );
   }
 
-  void _stopRecording() {
+  Future<void> _stopRecording() async {
+    if (_state != _RecordState.recording) return;
     _recordTimer?.cancel();
+    await _speech.stop();
+    if (!mounted) return;
     setState(() {
-      _recordedDuration = _elapsedMs / 1000.0;
+      _recordedDuration = (_elapsedMs / 1000.0).clamp(0.8, 60);
       _state = _RecordState.complete;
     });
   }
 
   void _retry() {
+    _recordTimer?.cancel();
+    _speech.stop();
     setState(() {
       _state = _RecordState.idle;
       _elapsedMs = 0;
+      _recognizedText = '';
+      _speechMessage = null;
     });
+  }
+
+  Future<void> _saveAndContinue() async {
+    final text = _recognizedText.trim();
+    if (text.isEmpty || _saving) return;
+
+    setState(() => _saving = true);
+    await _dhikrStore.add(text);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    _continue(text);
+  }
+
+  void _continue([String? text]) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RepetitionScreen(
+          recordedDuration: _recordedDuration,
+          dhikrText: text ?? _recognizedText.trim(),
+        ),
+      ),
+    );
   }
 
   String get _timerLabel {
@@ -102,7 +219,7 @@ class _RecordScreenState extends State<RecordScreen>
       body: SafeArea(
         child: Column(
           children: [
-            TopBar(title: 'التسجيل'),
+            const TopBar(title: 'التسجيل'),
             Expanded(child: _buildBody()),
             _buildFooter(),
             const SizedBox(height: 34),
@@ -132,16 +249,32 @@ class _RecordScreenState extends State<RecordScreen>
           child: Column(
             children: [
               Text(
-                'اقرأ الذكر الذي تريد تكراره',
+                'اقرأ الذكر بصوتك',
                 textAlign: TextAlign.center,
                 style: AppFonts.kufi(size: 24, weight: FontWeight.w500),
               ),
               const SizedBox(height: 12),
               Text(
-                'اضغط على الزر وابدأ بقراءة الذكر بصوتٍ هادئ.',
+                'سنستخدم التعرّف الصوتي لتحويل الذكر إلى نص، ثم يمكنك حفظه محلياً.',
                 textAlign: TextAlign.center,
-                style: AppFonts.arabic(size: 14, color: AppColors.ink2, height: 1.6),
+                style: AppFonts.arabic(
+                  size: 14,
+                  color: AppColors.ink2,
+                  height: 1.6,
+                ),
               ),
+              if (_speechMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _speechMessage!,
+                  textAlign: TextAlign.center,
+                  style: AppFonts.arabic(
+                    size: 12,
+                    color: AppColors.brass,
+                    height: 1.5,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -195,236 +328,208 @@ class _RecordScreenState extends State<RecordScreen>
   }
 
   Widget _buildRecording() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Live recording tag
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: AppColors.line),
+    final recognized = _recognizedText.trim();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Column(
+        children: [
+          const SizedBox(height: 30),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FadeTransition(
+                  opacity: _blinkOpacity,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFFC2492E),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'جاري الاستماع',
+                  style: AppFonts.arabic(size: 13, color: AppColors.ink2),
+                ),
+              ],
+            ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FadeTransition(
-                opacity: _blinkOpacity,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
+          const SizedBox(height: 28),
+          SizedBox(
+            width: 220,
+            height: 220,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                AnimatedBuilder(
+                  animation: _breatheScale1,
+                  builder: (_, __) => Transform.scale(
+                    scale: _breatheScale1.value,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.sage.withOpacity(0.10),
+                      ),
+                    ),
+                  ),
+                ),
+                AnimatedBuilder(
+                  animation: _breatheScale2,
+                  builder: (_, __) => Transform.scale(
+                    scale: _breatheScale2.value,
+                    child: Container(
+                      margin: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.sage.withOpacity(0.14),
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 124,
+                  height: 124,
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Color(0xFFC2492E),
+                    color: AppColors.sage,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.sage.withOpacity(0.55),
+                        blurRadius: 32,
+                        offset: const Offset(0, 12),
+                        spreadRadius: -8,
+                      ),
+                    ],
                   ),
+                  child: const _MicIcon(size: 44, color: AppColors.creamText),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'جارٍ التسجيل',
-                style: AppFonts.arabic(size: 13, color: AppColors.ink2),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 32),
-        SizedBox(
-          width: 220,
-          height: 220,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              AnimatedBuilder(
-                animation: _breatheScale1,
-                builder: (_, __) => Transform.scale(
-                  scale: _breatheScale1.value,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.sage.withOpacity(0.10),
-                    ),
-                  ),
-                ),
-              ),
-              AnimatedBuilder(
-                animation: _breatheScale2,
-                builder: (_, __) => Transform.scale(
-                  scale: _breatheScale2.value,
-                  child: Container(
-                    margin: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.sage.withOpacity(0.14),
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                width: 124,
-                height: 124,
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(_barHeights.length, (i) {
+              return Container(
+                width: 3,
+                height: _barHeights[i],
+                margin: const EdgeInsets.symmetric(horizontal: 1.5),
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.sage,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.sage.withOpacity(0.55),
-                      blurRadius: 32,
-                      offset: const Offset(0, 12),
-                      spreadRadius: -8,
-                    ),
-                  ],
+                  color: i < 18
+                      ? AppColors.sage
+                      : AppColors.sage.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                child: const _MicIcon(size: 44, color: AppColors.creamText),
-              ),
-            ],
+              );
+            }),
           ),
-        ),
-        const SizedBox(height: 28),
-        // Static waveform
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(_barHeights.length, (i) {
-            return Container(
-              width: 3,
-              height: _barHeights[i],
-              margin: const EdgeInsets.symmetric(horizontal: 1.5),
-              decoration: BoxDecoration(
-                color: i < 18
-                    ? AppColors.sage
-                    : AppColors.sage.withOpacity(0.25),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            );
-          }),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          _timerLabel,
-          style: AppFonts.kufi(size: 28, color: AppColors.ink, spacing: 1),
-        ),
-      ],
+          const SizedBox(height: 18),
+          Text(
+            _timerLabel,
+            style: AppFonts.kufi(size: 28, color: AppColors.ink, spacing: 1),
+          ),
+          const SizedBox(height: 18),
+          _RecognizedTextCard(
+            text: recognized.isEmpty ? 'ابدأ بقراءة الذكر...' : recognized,
+            muted: recognized.isEmpty,
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
     );
   }
 
   Widget _buildComplete() {
     final duration = _recordedDuration;
     final durationStr = duration.toStringAsFixed(1);
-    final playbackBars = [8,14,6,18,12,20,10,16,8,14,18,10,6,12,20,8,14,10,16,8,12,18,10,6,14,8,12,16,10,8];
+    final recognized = _recognizedText.trim();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 28),
       child: Column(
         children: [
-          const SizedBox(height: 40),
+          const SizedBox(height: 34),
           Container(
             width: 64,
             height: 64,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.sageSoft,
+              color:
+                  recognized.isEmpty ? AppColors.lineLight : AppColors.sageSoft,
               border: Border.all(color: AppColors.sage.withOpacity(0.15)),
             ),
-            child: const Icon(Icons.check, color: AppColors.sage, size: 28),
+            child: Icon(
+              recognized.isEmpty ? Icons.priority_high : Icons.check,
+              color: AppColors.sage,
+              size: 28,
+            ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
           Text(
-            'تم حفظ تسجيلك',
+            recognized.isEmpty
+                ? 'لم يتم التعرّف على نص'
+                : 'تم التعرّف على الذكر',
+            textAlign: TextAlign.center,
             style: AppFonts.kufi(size: 22, weight: FontWeight.w500),
           ),
           const SizedBox(height: 8),
           Text(
-            'سيُستخدم هذا الإيقاع لضبط جلستك.',
+            recognized.isEmpty
+                ? 'أعد التسجيل بصوت أوضح، أو تابع بدون حفظ النص.'
+                : 'راجع النص، ثم احفظه واستخدمه في جلستك.',
             textAlign: TextAlign.center,
-            style: AppFonts.arabic(size: 14, color: AppColors.ink2, height: 1.6),
+            style: AppFonts.arabic(
+              size: 14,
+              color: AppColors.ink2,
+              height: 1.6,
+            ),
           ),
-          const SizedBox(height: 28),
-          // Duration card
+          const SizedBox(height: 24),
+          _RecognizedTextCard(
+            text: recognized.isEmpty ? 'لا يوجد نص بعد' : recognized,
+            muted: recognized.isEmpty,
+          ),
+          const SizedBox(height: 18),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(22),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: AppColors.card,
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: AppColors.line),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
               children: [
                 Text(
-                  'مدة الذكر المسجل',
-                  style: AppFonts.arabic(size: 12, color: AppColors.ink3),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      toArabic(double.parse(durationStr)),
-                      style: AppFonts.kufi(
-                        size: 48,
-                        weight: FontWeight.w500,
-                        spacing: -1,
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'ثانية',
-                      style: AppFonts.arabic(size: 15, color: AppColors.ink2),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                // Mini playback
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.bg,
-                    borderRadius: BorderRadius.circular(14),
+                  toArabic(double.parse(durationStr)),
+                  style: AppFonts.kufi(
+                    size: 42,
+                    weight: FontWeight.w500,
+                    spacing: -1,
+                    height: 1,
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.sage,
-                        ),
-                        child: const Icon(
-                          Icons.play_arrow,
-                          color: AppColors.creamText,
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: playbackBars.map((h) => Container(
-                            width: 2.5,
-                            height: h.toDouble(),
-                            decoration: BoxDecoration(
-                              color: AppColors.sage.withOpacity(0.35),
-                              borderRadius: BorderRadius.circular(1.5),
-                            ),
-                          )).toList(),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        toArabic('0:03'),
-                        style: AppFonts.kufi(size: 12, color: AppColors.ink2),
-                      ),
-                    ],
-                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'ثانية',
+                  style: AppFonts.arabic(size: 15, color: AppColors.ink2),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 30),
         ],
       ),
     );
@@ -450,23 +555,32 @@ class _RecordScreenState extends State<RecordScreen>
         ),
       );
     }
-    // complete
+
+    final hasText = _recognizedText.trim().isNotEmpty;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
           PrimaryButton(
-            label: 'متابعة',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => RepetitionScreen(
-                  recordedDuration: _recordedDuration,
+            label: hasText
+                ? (_saving ? 'جاري الحفظ...' : 'حفظ ومتابعة')
+                : 'متابعة بدون نص',
+            onTap: hasText ? _saveAndContinue : () => _continue(''),
+          ),
+          if (hasText) ...[
+            const SizedBox(height: 4),
+            GestureDetector(
+              onTap: () => _continue(_recognizedText.trim()),
+              child: Container(
+                height: 44,
+                alignment: Alignment.center,
+                child: Text(
+                  'متابعة بدون حفظ',
+                  style: AppFonts.kufi(size: 15, color: AppColors.ink2),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 4),
+          ],
           GestureDetector(
             onTap: _retry,
             child: Container(
@@ -479,6 +593,39 @@ class _RecordScreenState extends State<RecordScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _RecognizedTextCard extends StatelessWidget {
+  final String text;
+  final bool muted;
+
+  const _RecognizedTextCard({
+    required this.text,
+    required this.muted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: AppFonts.arabic(
+          size: muted ? 14 : 18,
+          weight: muted ? FontWeight.w400 : FontWeight.w500,
+          color: muted ? AppColors.ink3 : AppColors.ink,
+          height: 1.7,
+        ),
       ),
     );
   }

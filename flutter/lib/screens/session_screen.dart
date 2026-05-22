@@ -12,11 +12,13 @@ import 'history_screen.dart';
 class SessionScreen extends StatefulWidget {
   final int total;
   final double recordedDuration;
+  final String? dhikrText;
 
   const SessionScreen({
     super.key,
     required this.total,
     required this.recordedDuration,
+    this.dhikrText,
   });
 
   @override
@@ -98,6 +100,7 @@ class _SessionScreenState extends State<SessionScreen>
         date: DateTime.now(),
         target: widget.total,
         completed: completed.clamp(0, widget.total),
+        dhikrText: widget.dhikrText,
       ),
     );
   }

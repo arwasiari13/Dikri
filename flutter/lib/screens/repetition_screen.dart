@@ -6,8 +6,13 @@ import 'ready_screen.dart';
 
 class RepetitionScreen extends StatefulWidget {
   final double recordedDuration;
+  final String? dhikrText;
 
-  const RepetitionScreen({super.key, required this.recordedDuration});
+  const RepetitionScreen({
+    super.key,
+    required this.recordedDuration,
+    this.dhikrText,
+  });
 
   @override
   State<RepetitionScreen> createState() => _RepetitionScreenState();
@@ -85,6 +90,7 @@ class _RepetitionScreenState extends State<RepetitionScreen> {
                     builder: (_) => ReadyScreen(
                       total: _selected,
                       recordedDuration: widget.recordedDuration,
+                      dhikrText: widget.dhikrText,
                     ),
                   ),
                 ),

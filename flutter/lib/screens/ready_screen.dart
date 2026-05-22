@@ -7,11 +7,13 @@ import 'session_screen.dart';
 class ReadyScreen extends StatelessWidget {
   final int total;
   final double recordedDuration;
+  final String? dhikrText;
 
   const ReadyScreen({
     super.key,
     required this.total,
     required this.recordedDuration,
+    this.dhikrText,
   });
 
   @override
@@ -155,6 +157,7 @@ class ReadyScreen extends StatelessWidget {
                     builder: (_) => SessionScreen(
                       total: total,
                       recordedDuration: recordedDuration,
+                      dhikrText: dhikrText,
                     ),
                   ),
                 ),

@@ -4,11 +4,13 @@ class SessionRecord {
   final DateTime date;
   final int target;
   final int completed;
+  final String? dhikrText;
 
   const SessionRecord({
     required this.date,
     required this.target,
     required this.completed,
+    this.dhikrText,
   });
 
   bool get isComplete => completed >= target;
@@ -18,6 +20,7 @@ class SessionRecord {
         'date': date.toIso8601String(),
         'target': target,
         'completed': completed,
+        if (dhikrText != null && dhikrText!.isNotEmpty) 'dhikrText': dhikrText,
       };
 
   String encode() => jsonEncode(toJson());
@@ -27,6 +30,7 @@ class SessionRecord {
       date: DateTime.parse(json['date'] as String),
       target: (json['target'] as num).toInt(),
       completed: (json['completed'] as num).toInt(),
+      dhikrText: json['dhikrText'] as String?,
     );
   }
 
