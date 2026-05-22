@@ -21,7 +21,9 @@ class _DhikrLibraryScreenState extends State<DhikrLibraryScreen> {
   late Future<List<SavedDhikr>> _dhikrsFuture = _store.load();
 
   void _reload() {
-    setState(() => _dhikrsFuture = _store.load());
+    setState(() {
+      _dhikrsFuture = _store.load();
+    });
   }
 
   Future<void> _delete(SavedDhikr dhikr) async {

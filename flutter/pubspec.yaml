@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  google_fonts: ^8.1.0
   shared_preferences: ^2.5.5
   speech_to_text: ^7.4.0
 
@@ -16,6 +17,15 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  web:
+    generate: true
+  image_path: assets/icon/dikri_logo.png
 
 flutter:
   uses-material-design: true

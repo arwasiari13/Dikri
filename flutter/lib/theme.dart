@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
   static const bg = Color(0xFFF3EFE7);
@@ -24,7 +25,7 @@ class AppFonts {
     double spacing = 0,
     double? height,
   }) =>
-      TextStyle(
+      GoogleFonts.reemKufi(
         fontSize: size,
         fontWeight: weight,
         color: color,
@@ -39,7 +40,7 @@ class AppFonts {
     double spacing = 0,
     double? height,
   }) =>
-      TextStyle(
+      GoogleFonts.ibmPlexSansArabic(
         fontSize: size,
         fontWeight: weight,
         color: color,

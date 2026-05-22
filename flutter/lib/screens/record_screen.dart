@@ -23,15 +23,19 @@ class _RecordScreenState extends State<RecordScreen>
     with TickerProviderStateMixin {
   final _speech = stt.SpeechToText();
   final _dhikrStore = SavedDhikrStore();
+  final _recordStopwatch = Stopwatch();
 
   _RecordState _state = _RecordState.idle;
   int _elapsedMs = 0;
   double _recordedDuration = 3.2;
   String _recognizedText = '';
   String? _speechMessage;
+  String? _listenLocaleId;
   bool _speechReady = false;
   bool _saving = false;
   Timer? _recordTimer;
+
+  static const _recordingTrimMs = 1000;
 
   late AnimationController _breatheCtrl;
   late Animation<double> _breatheScale1;
@@ -115,19 +119,7 @@ class _RecordScreenState extends State<RecordScreen>
       _elapsedMs = 0;
     });
 
-    final ready = _speechReady ||
-        await _speech.initialize(
-          onError: (error) {
-            if (!mounted) return;
-            setState(() => _speechMessage = error.errorMsg);
-          },
-          onStatus: (status) {
-            if (!mounted) return;
-            if (status == 'done' && _state == _RecordState.recording) {
-              _stopRecording();
-            }
-          },
-        );
+    final ready = _speechReady || await _initializeSpeech();
 
     if (!ready) {
       setState(() {
@@ -138,42 +130,132 @@ class _RecordScreenState extends State<RecordScreen>
     }
 
     _speechReady = true;
+    _listenLocaleId ??= await _resolveArabicLocale();
+    _recordStopwatch
+      ..reset()
+      ..start();
     setState(() => _state = _RecordState.recording);
     _recordTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (mounted) setState(() => _elapsedMs += 100);
+      if (mounted) {
+        setState(() => _elapsedMs = _recordStopwatch.elapsedMilliseconds);
+      }
     });
 
-    await _speech.listen(
-      onResult: (result) {
+    try {
+      await _speech.listen(
+        onResult: (result) {
+          if (!mounted) return;
+          setState(() {
+            _recognizedText = result.recognizedWords.trim();
+          });
+        },
+        listenOptions: stt.SpeechListenOptions(
+          localeId: _listenLocaleId,
+          listenFor: const Duration(seconds: 60),
+          pauseFor: const Duration(seconds: 6),
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: stt.ListenMode.dictation,
+        ),
+      );
+    } catch (error) {
+      _recordTimer?.cancel();
+      if (!mounted) return;
+      setState(() {
+        _state = _RecordState.idle;
+        _speechMessage = 'تعذّر بدء التعرّف الصوتي: $error';
+      });
+    }
+  }
+
+  Future<bool> _initializeSpeech() {
+    return _speech.initialize(
+      debugLogging: true,
+      onError: (error) {
         if (!mounted) return;
         setState(() {
-          _recognizedText = result.recognizedWords.trim();
+          _speechMessage = _friendlySpeechError(error.errorMsg);
         });
       },
-      listenOptions: stt.SpeechListenOptions(
-        localeId: 'ar',
-        listenFor: const Duration(seconds: 45),
-        pauseFor: const Duration(seconds: 4),
-        partialResults: true,
-        cancelOnError: false,
-        listenMode: stt.ListenMode.dictation,
-      ),
+      onStatus: (status) {
+        if (!mounted) return;
+        if (status == 'done' && _state == _RecordState.recording) {
+          _stopRecording();
+        }
+      },
     );
+  }
+
+  Future<String> _resolveArabicLocale() async {
+    try {
+      final locales = await _speech.locales();
+      final preferred = [
+        'ar_DZ',
+        'ar-DZ',
+        'ar_SA',
+        'ar-SA',
+        'ar_EG',
+        'ar-EG',
+        'ar_AE',
+        'ar-AE',
+        'ar',
+      ];
+
+      String normalize(String value) =>
+          value.toLowerCase().replaceAll('-', '_');
+      for (final target in preferred.map(normalize)) {
+        for (final locale in locales) {
+          if (normalize(locale.localeId) == target) return locale.localeId;
+        }
+      }
+      for (final locale in locales) {
+        if (normalize(locale.localeId).startsWith('ar')) return locale.localeId;
+      }
+    } catch (_) {
+      // Web speech often cannot list all online recognizer languages.
+    }
+    return 'ar-SA';
+  }
+
+  String _friendlySpeechError(String error) {
+    switch (error) {
+      case 'not-allowed':
+      case 'not_allowed':
+      case 'permission':
+        return 'اسمح للمتصفح أو الهاتف باستخدام الميكروفون ثم جرّب مرة أخرى.';
+      case 'no-speech':
+      case 'error_no_match':
+        return 'لم أسمع صوتاً واضحاً. اقترب من الميكروفون وجرّب مرة أخرى.';
+      case 'network':
+      case 'network_error':
+        return 'خدمة التعرّف الصوتي تحتاج اتصال إنترنت الآن.';
+      case 'speech_not_supported':
+      case 'not supported':
+        return 'التعرّف الصوتي غير مدعوم في هذا المتصفح. جرّبه على كروم أو على هاتف أندرويد.';
+      default:
+        return 'خطأ في التعرّف الصوتي: $error';
+    }
   }
 
   Future<void> _stopRecording() async {
     if (_state != _RecordState.recording) return;
     _recordTimer?.cancel();
+    _recordStopwatch.stop();
     await _speech.stop();
     if (!mounted) return;
+    final adjustedMs = (_recordStopwatch.elapsedMilliseconds - _recordingTrimMs)
+        .clamp(0, 60000);
     setState(() {
-      _recordedDuration = (_elapsedMs / 1000.0).clamp(0.8, 60);
+      _recordedDuration = (adjustedMs / 1000.0).clamp(0.8, 60);
       _state = _RecordState.complete;
     });
   }
 
   void _retry() {
     _recordTimer?.cancel();
+    _recordStopwatch
+      ..stop()
+      ..reset();
     _speech.stop();
     setState(() {
       _state = _RecordState.idle;
